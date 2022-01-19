@@ -1,0 +1,8 @@
+Flight Price Prediction Using an Artificial Neural Network
+
+This goals of this project are to:
+1. collect recent,relevant flight data and prices from a major flight booking website using Selenium
+- Parsing data using regex
+- Data collected will be written to a .csv file for later use
+2. Construct an ANN capable of predicting on both continuous and categorical data 
+- ANN will use pytorch
