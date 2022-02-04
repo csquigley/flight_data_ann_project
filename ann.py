@@ -1,9 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[1]:
-
-
 import torch
 import torch.nn as nn
 import numpy as np
@@ -12,20 +6,15 @@ import matplotlib.pyplot as plt
 import datetime as dt
 import re
 import torch.nn.functional as F
-
-
-# In[2]:
-
+from torch.utils.data import DataLoader
+from torch.utils.data import Dataset
 
 #read in data
 columns = ['blank','search_rank','dep_date','dep_city','arr_city', 'search_date','dep_hour','dep_minute','dep_ampm','carrier','price','remaining_t','arr_hour','arr_minute','arr_ampm','plus_days','duration_hours','duration_minutes','layovers','layover_cities','layover_duration','next_carrier','multiple_airlines']
-data = pd.read_csv('/Users/christopherquigley/Desktop/FLIGHT_ANN/flight_data_ann_project/flight_data.csv',names=columns,index_col=False)
+data = pd.read_csv('/Users/christopherquigley/Desktop/FLIGHT_ANN/flight_data_ann_project/flight_data_testfile.csv',names=columns,index_col=False)
 data.drop('blank',axis=1,inplace=True)
+data = data.dropna()
 data.info()
-
-
-# In[3]:
-
 
 #a few functions for feaature engineering
 #convert raw data into datetime objects
@@ -57,22 +46,11 @@ def layovers(x):
 def weekday(x):
     return x['dep_dt'].weekday()
 
-
-
-
-# In[4]:
-
-
 #apply the above functions to our data
 data['dep_dt'] = data.apply(convert_to_dt,axis=1)
 data['time_to_takeoff'] = data.apply(time_to_takeoff,axis=1)
 data['total_duration'] = data.apply(total_duration,axis=1)
 data['dep_weekday'] = data.apply(weekday,axis=1)
-
-
-
-# In[5]:
-
 
 #turn the layover cities into individual columns
 lays = data.apply(layovers,axis=1)
@@ -80,12 +58,6 @@ lays = lays.to_numpy()
 data['l1'] = lays[:,0]
 data['l2'] = lays[:,1]
 data['l3'] = lays[:,2]
-
-
-
-
-# In[6]:
-
 
 #categorical data
 
@@ -102,36 +74,37 @@ embedding_sizes = []
 for cat in cat_columns:
     embedding_sizes.append((data[cat].nunique(),min(50,(data[cat].nunique()+1)//2)))
 
-
-# In[7]:
-
-
 #shuffle data
 #NOTE: Should shuffle data after each epoch for more robust results
 data = data.sample(frac=1)
-
-
-# In[8]:
-
 
 #turn data into tensors
 xcont = np.stack([data[col].values for col in cont_columns],1)
 xcont = torch.tensor(xcont,dtype=torch.float)
 xcats = np.stack([data[col].cat.codes.values for col in cat_columns],1)
 xcats = torch.tensor(xcats,dtype=torch.int64)
+
 #Y label data: predicting price
 y_true = torch.tensor([data['price'].values],dtype=torch.float)
-
-
-# In[9]:
-
-
 y_true = y_true.reshape(-1,1)
+#create a dataset object which is needed to create a dataloader object
+class MyDataset(Dataset):
+    def __init__(self,xcont,xcat,y_true):
+        self.xcont = xcont
+        self.xcat = xcat
+        self.y_true=y_true
+    def __len__(self):
+        return len(self.y_true)
+    def __getitem__(self,index):
+        xco = self.xcont[index]
+        xca = self.xcat[index]
+        y = self.y_true[index]
+        return xco,xca,y
 
-
-# In[10]:
-
-
+dataset = MyDataset(xcont,xcats,y_true)
+#create dataloader
+x_loader = DataLoader(dataset,batch_size=500,shuffle=True)
+#Model Architecture
 #Model Architecture
 class Model(nn.Module):
 
@@ -149,13 +122,14 @@ class Model(nn.Module):
         self.bat_norm3 = nn.BatchNorm1d(h3)
         self.out = nn.Linear(h3,1)
 
-    def forward(self,x_con,x_cat):
+    def forward(self,xcon,xcat):
         ecat = []
+
         for i, e in enumerate(self.embeddings):
-            ecat.append(e(x_cat[:,i]))
+            ecat.append(e(xcat[:,i]))
         ecat = torch.cat(ecat,1)
         ecat = self.drop(ecat)
-        x_con = self.bat_norm1(x_con)
+        x_con = self.bat_norm1(xcon)
         x = torch.cat([ecat,x_con],1)
         x = F.relu(self.input_layer(x))
         x = self.drop(x)
@@ -167,11 +141,6 @@ class Model(nn.Module):
         x = self.bat_norm3(x)
         x = self.out(x)
         return x
-
-
-# In[11]:
-
-
 #create Model instance
 model = Model()
 #define the loss function
@@ -179,36 +148,24 @@ criterion = torch.nn.MSELoss()
 #define the optimizer and connect it to the model
 optimizer = torch.optim.Adam(model.parameters(),lr=0.001)
 #Epochs: 5000+ works well for final model
-epochs = 500
-
-
-# In[12]:
-
-
-
+epochs = 200
 losses = []
 
 for i in range(epochs):
+    for xcont,xcat,y_true in x_loader:
     #generate a prediction
-    y_pred = model.forward(xcont,xcats)
-    #calculate a loss
-    loss = criterion(y_pred,y_true)
-    if i % 100 == 0:
+        y_pred = model.forward(xcont,xcat)
+        #calculate a loss
+        loss = criterion(y_pred,y_true)
+
+        losses.append(loss)
+        #back-propagation
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+    if i % 10 == 0:
         print(f"loss: {loss}")
-    losses.append(loss)
-    #back-propagation
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-
-
-# In[13]:
-
 
 plt.plot(losses)
 
-
-# In[14]:
-
-
-torch.save(model.state_dict(),'flight_ann_test_2.pt')
+torch.save(model.state_dict(),'flight_ann_test_3.pt')
