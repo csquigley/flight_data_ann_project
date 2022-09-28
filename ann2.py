@@ -21,10 +21,10 @@ from torch.utils.data import Dataset
 
 #read in data
 columns = ['blank','search_rank','dep_date','dep_city','arr_city', 'search_date','dep_hour','dep_minute','dep_ampm','carrier','price','remaining_t','arr_hour','arr_minute','arr_ampm','plus_days','duration_hours','duration_minutes','layovers','layover_cities','layover_duration','next_carrier','multiple_airlines']
-data = pd.read_csv('/Users/christopherquigley/Desktop/FLIGHT_ANN/flight_data_ann_project/flight_data_testfile.csv',names=columns,index_col=False)
+data = pd.read_csv('flight_data_testfile.csv',names=columns,index_col=False)
 data.drop('blank',axis=1,inplace=True)
 data = data.dropna()
-data = data[:10000]
+data = data[]
 data.info()
 
 
